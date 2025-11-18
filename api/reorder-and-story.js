@@ -1,5 +1,7 @@
+// api/reorder-and-story.js
+
 export default async function handler(req, res) {
-  // CORS 허용 (CodePen에서 바로 호출할 거라서)
+  // CORS 설정 (CodePen에서 직접 호출 가능하게)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -13,7 +15,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { vocab } = req.body; // [{word, meaning}, ...]
+    const { vocab } = req.body || {};
+
     if (!Array.isArray(vocab) || !vocab.length) {
       return res.status(400).json({ error: 'vocab is required' });
     }
@@ -37,7 +40,10 @@ ${vocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'You are a helpful assistant that returns ONLY valid JSON.' },
+          {
+            role: 'system',
+            content: 'You are a helpful assistant that returns ONLY valid JSON, with no explanations or code fences.'
+          },
           { role: 'user', content: prompt }
         ],
         temperature: 0.5
@@ -51,13 +57,24 @@ ${vocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
       return res.status(500).json({ error: 'OpenAI API error', detail: data });
     }
 
-    const text = data.choices[0].message.content.trim();
+    const raw = (data.choices?.[0]?.message?.content || '').trim();
+
+    // ```json ... ``` 또는 ``` ... ``` 코드블럭 제거
+    let cleaned = raw
+      .replace(/^```json\s*/i, '') // 맨 앞의 ```json
+      .replace(/^```/, '')         // 혹시 그냥 ```로 시작한 경우
+      .replace(/```$/, '')         // 맨 뒤의 ```
+      .trim();
+
     let json;
     try {
-      json = JSON.parse(text);
+      json = JSON.parse(cleaned);
     } catch (e) {
-      console.error('JSON parse error:', e, text);
-      return res.status(500).json({ error: 'JSON parse error from LLM', raw: text });
+      console.error('JSON parse error:', e, raw);
+      return res.status(500).json({
+        error: 'JSON parse error from LLM',
+        raw
+      });
     }
 
     return res.status(200).json(json);
