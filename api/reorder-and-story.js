@@ -1,6 +1,3 @@
-//reorder-and-story.js
-import fetch from 'node-fetch';
-
 export default async function handler(req, res) {
   // CORS 허용 (CodePen에서 바로 호출할 거라서)
   res.setHeader('Access-Control-Allow-Origin', '*');
