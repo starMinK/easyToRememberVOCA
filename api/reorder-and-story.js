@@ -52,7 +52,8 @@ You are a Korean word-mnemonic generator.
 
 ### 2. story 작성 규칙 (매우 중요)
 - 사용자가 해당 단어를 외우가 쉽게 단어별 스토리를 만들어 (초단기 이미지 암기용) 넣어라.
-- 스토리는 단어 발음과 말장난(스토리)가 잘 어우려져야 한다.
+- 스토리는 단어 발음과 뜻이 한 스토리로 잘 어우려져야 한다.
+- 예를들어 단어가 insight라면 인싸(insight)는 다 꿰뚫어봐!를 출력한다. 이는 '인싸'<- 한글로 insight를 표현, '다 꿰둟어봐' <- 뜻을 내재함. 과 같은 방식이다.
 - 짧을 수록 좋다.
 ### 3. JSON 형식 예시 (중요)
 아래는 단어 3개만 있는 예시이다. 이 형식과 톤을 그대로 따라라.
@@ -62,19 +63,19 @@ You are a Korean word-mnemonic generator.
     {
       "word": "insight",
       "meaning": "통찰, 통찰력",
-      "group": "생각/통찰/마음",
+      "group": "(in)안에",
       "story": "인싸(insight)는 다 꿰뚫어봐"
     },
     {
       "word": "achieve",
       "meaning": "이루다, 달성하다",
-      "group": "달성/성공/발전",
+      "group": "(ad)머리",
       "story": "야 치브(achive)! 목표 클리어!"
     },
     {
       "word": "laundry",
       "meaning": "세탁물",
-      "group": "장소/행위",
+      "group": "",
       "story": "런드리(laundry)룸, 빨래 산더미 폭발"
     }
   ]
@@ -87,7 +88,7 @@ ${vocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
 - 위 JSON 예시는 설명용일 뿐이다.
 - 실제 출력에서는 위 예시를 절대 포함하지 마라.
 - 오직 실제 단어들만 포함한 {"items":[...]} JSON 하나만 출력해라.
-- 단어 뜻의 접두사는 , 만 사용한다. 띄어쓰기나 다른 기호로 구별하지 않는다.
+- 단어 뜻의 접두사는 , 만 사용한다. 띄어쓰기나 다른 기호로 구별하지 않는다. 만약 불러온 단어가 , 이외의 문자로 구분되어 있다면 알아서 잘 , 로 변경하라.
 `.trim();
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
