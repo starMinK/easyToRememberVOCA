@@ -1,7 +1,7 @@
 // api/reorder-and-story.js
 
 export default async function handler(req, res) {
-  // CORS 설정 (CodePen에서 직접 호출 가능하게)
+  // CORS 설정 (CodePen 등에서 직접 호출 가능하게)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -22,18 +22,19 @@ export default async function handler(req, res) {
     }
 
     // ---------------------------------------
-    // 0) 의미(meaning) 정규화: "진짜 구분자"만 콤마로
+    // 0) 의미(meaning) 정규화
+    //    - 진짜 구분자들만 콤마로
+    //    - 필요시 "띄어쓰기로만 구분된 뜻"도 콤마로
     // ---------------------------------------
     function normalizeMeaning(raw) {
       let m = String(raw || '').trim();
-
       if (!m) return '';
 
       // 1) 명확한 구분자들을 콤마로 통일: / · • | ; 등
       m = m.replace(/[/·•\|;]/g, ',');
 
       // 2) 의미 사이를 두 칸 이상 띄어쓴 경우 → 콤마로 간주
-      //    예: "마음가짐  사고방식" -> "마음가짐,사고방식"
+      //    ex) "마음가짐  사고방식" -> "마음가짐,사고방식"
       m = m.replace(/\s{2,}/g, ',');
 
       // 3) 콤마 주변 공백 정리: " , " / ", " / " ," -> ","
@@ -45,6 +46,18 @@ export default async function handler(req, res) {
       // 5) 앞뒤 공백/콤마 제거
       m = m.replace(/^\s+|\s+$/g, '');
       m = m.replace(/^,|,$/g, '');
+
+      // 6) 여전히 콤마가 하나도 없고, 의미 안에 공백이 있다면
+      //    → 사용자가 띄어쓰기로 뜻을 구분했을 가능성: 공백을 콤마로 변환
+      //    ex) "시민의 민간의" -> "시민의,민간의"
+      if (!m.includes(' ') && !m.includes(',')) {
+        // 공백도 없고 콤마도 없는 단일 단어/구는 그대로 둔다.
+        return m;
+      }
+
+      if (!m.includes(',') && /\s+/.test(m)) {
+        m = m.replace(/\s+/g, ',');
+      }
 
       return m;
     }
@@ -79,13 +92,19 @@ You are a Korean mnemonic generator.
 
 5) "story":
    - 초단기 이미지 암기용 한 줄 한국어 스토리.
-   - 반드시 한국어 발음을 활용한 비틀기 + 뜻(한국어 뜻)을 함께 떠올릴 수 있는 문장일 것.
-   - 영어 단어를 그대로 반복해서 쓰는 스토리는 피하라.
-     나쁜 예: "마인드셋(mindset)으로 마음 세팅 완료!" (영어 그대로 넣은 형태)
+   - 반드시 한국어 발음을 유머있게 비틀어서, 한국어 뜻까지 함께 떠올릴 수 있는 문장으로 만들어라.
+   - 영어 단어를 괄호 안에 함께 쓰는 것은 허용된다. (예: 듀티(duty))
+   - 하지만 한국어 부분이 단순히 발음을 그대로 옮겨 적은 문장만 되어서는 안 된다.
+     예) "듀티(Duty)를 지키는 것이 의무다." → 발음 그대로 + 의미 직설, 유머/연상이 약함 → ❌
+         "마이너(minor)한 문제는 사소한 거야." → 발음만 그대로 쓰고 끝 → ❌
+   - 스토리에는 반드시 "단어가 연상되는 한글 표현"을 사용하라.
+     - 발음 일부를 잘라서 다른 단어처럼 보이게 하거나,
+     - 억지지만 웃기게 연결되는 한국어 문장으로 만들어라.
    - 좋은 예:
-     - insight → "인싸(insight)는 다 꿰뚫어봐!"
-     - mindset → "마음 셋(mind set)을 제대로 해야 사고방식이 잡힌다."
-     - achieve → "야 치브(achieve)! 목표 달성했다!"
+     - insight → "인싸는(insight) 사람 속을 다 꿰뚫어본다."
+     - mindset → "마음 셋(마인 셋)을 제대로 먹어야 사고방식이 잡힌다."
+     - duty → "두 티(duty)를 흘려도 의무는 못 흘린다."
+     - minor → "마이너(minor)한 건 사소해서 '마이너한 티'만 살짝 난다."
    - 스토리는 짧을수록 좋지만, 단어 발음과 뜻을 둘 다 연상 가능해야 한다.
    - 모든 단어는 반드시 story를 채워라. 공백("") 절대 금지.
 `.trim();
@@ -101,12 +120,13 @@ You are a Korean mnemonic generator.
 - 출력은 반드시 {"items":[...]} 형식의 JSON 하나만.
 - meaning은 아래 목록에 있는 문자열을 그대로 사용해라. (수정 금지)
 
-### 실제 단어 목록 (meaning은 콤마로 구분된 상태임)
+### 실제 단어 목록 (meaning은 콤마로 구분된 상태일 수 있음)
 ${normalizedVocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
 
-출력 예시 형식:
+출력 형식:
 {"items":[{"word":"...","meaning":"...","rootword":"...","story":"..."}, ...]}
-(예시는 출력에 포함시키지 마라)
+
+이 형식만 출력하고, 다른 텍스트는 절대 쓰지 마라.
 `.trim();
 
     // -----------------------------------
@@ -119,12 +139,12 @@ ${normalizedVocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o',   // 🔥 비용 조금 올리고 품질 확 올린 버전
+        model: 'gpt-4o',   // 자연스러운 스토리용
         messages: [
           { role: 'system', content: systemMessage },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.8
+        temperature: 0.8   // 네가 원하는 수준의 창의성/자연스러움
       })
     });
 
@@ -160,7 +180,8 @@ ${normalizedVocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
     // -----------------------------------
     // 5) 후처리: meaning, rootword, story 보정
     //    - meaning: 항상 우리가 정규화한 값을 사용
-    //    - rootword/story: 비어 있으면 기본값 채우기
+    //    - rootword/story: 비어 있으면 기본값 채우되,
+    //      스토리는 더 이상 "pause : ... 꼭 외우자" 같은 fallback 안 씀
     // -----------------------------------
     const llmItems = Array.isArray(llmJson.items) ? llmJson.items : [];
 
@@ -176,7 +197,7 @@ ${normalizedVocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
 
     const finalItems = normalizedVocab.map((v) => {
       const key = v.word.toLowerCase();
-      const baseMeaning = v.meaning; // 이미 우리가 정규화한 콤마 기반 meaning
+      const baseMeaning = v.meaning; // 우리가 정규화한 meaning
 
       const llmItem = llmMap.get(key) || {};
       let rootword = String(llmItem.rootword || '').trim();
@@ -185,8 +206,11 @@ ${normalizedVocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
       if (!rootword) {
         rootword = '어원 정보 없음';
       }
+
+      // story 비었으면 더 이상 기괴한 fallback 안 씀
+      // 프론트에서 "스토리 없음" 등으로 처리하도록 빈 문자열 유지
       if (!story) {
-        story = `${v.word} : ${baseMeaning} 를(을) 꼭 외우자.`;
+        story = '';
       }
 
       return {
