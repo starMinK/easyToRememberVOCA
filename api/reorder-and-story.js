@@ -146,7 +146,7 @@ ${normalizedVocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o',  // 스토리 자연스러움용
+        model: 'gpt-5.1',  // 스토리 자연스러움용
         messages: [
           { role: 'system', content: systemMessage },
           { role: 'user', content: prompt }
