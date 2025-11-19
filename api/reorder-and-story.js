@@ -21,81 +21,97 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'vocab is required' });
     }
 
-    // -------------------------------
-    // 1) system 메시지: 형식/규칙 강하게
-    // -------------------------------
+    // ---------------------------------------
+    // 0) 의미(meaning) 정규화: "진짜 구분자"만 콤마로
+    // ---------------------------------------
+    function normalizeMeaning(raw) {
+      let m = String(raw || '').trim();
+
+      if (!m) return '';
+
+      // 1) 명확한 구분자들을 콤마로 통일: / · • | ; 등
+      m = m.replace(/[/·•\|;]/g, ',');
+
+      // 2) 의미 사이를 두 칸 이상 띄어쓴 경우 → 콤마로 간주
+      //    예: "마음가짐  사고방식" -> "마음가짐,사고방식"
+      m = m.replace(/\s{2,}/g, ',');
+
+      // 3) 콤마 주변 공백 정리: " , " / ", " / " ," -> ","
+      m = m.replace(/\s*,\s*/g, ',');
+
+      // 4) 콤마 두 개 이상 연속 → 하나로
+      m = m.replace(/,{2,}/g, ',');
+
+      // 5) 앞뒤 공백/콤마 제거
+      m = m.replace(/^\s+|\s+$/g, '');
+      m = m.replace(/^,|,$/g, '');
+
+      return m;
+    }
+
+    const normalizedVocab = vocab.map((v) => ({
+      word: String(v.word || '').trim(),
+      meaning: normalizeMeaning(v.meaning)
+    }));
+
+    // -----------------------------------
+    // 1) system 메시지
+    // -----------------------------------
     const systemMessage = `
-You are a Korean word-mnemonic generator.
+You are a Korean mnemonic generator.
 
 반드시 아래 규칙을 지켜라:
 
-1) 출력은 무조건 JSON 하나만:
+1) 출력은 반드시 JSON 하나만:
    {"items":[{"word":"...","meaning":"...","rootword":"...","story":"..."}, ...]}
 
 2) 코드블럭(트리플 backtick) 절대 사용 금지.
-3) JSON 바깥에 어떤 텍스트도 쓰지 마라.
-   - 설명, 주석, 인사말, 추가 문장 모두 금지.
-4) "story"는 단어별 스토리 메이킹 (초단기 이미지 암기용)을 만들어 넣기.
+   JSON 바깥에 어떤 텍스트도 쓰지 마라. (설명/인사/주석 모두 금지)
+
+3) "meaning"은 내가 제공한 문자열을 그대로 복사해서 넣는다.
+   - meaning의 단어, 순서, 콤마 구분자를 절대로 수정/삭제/추가하지 마라.
+   - meaning은 오직 입력에서 받은 문자열 그대로를 사용한다.
+
+4) "rootword":
+   - 해당 단어의 어원을 (in)안에, (spect)보다 식으로 적어라.
+   - 여러 어원이 있다면 모두 포함해라.
+   - 어원을 잘 모르겠으면 빈 문자열("") 대신 "어원 정보 없음"이라고 적어라.
+
+5) "story":
+   - 초단기 이미지 암기용 한 줄 한국어 스토리.
+   - 반드시 한국어 발음을 활용한 비틀기 + 뜻(한국어 뜻)을 함께 떠올릴 수 있는 문장일 것.
+   - 영어 단어를 그대로 반복해서 쓰는 스토리는 피하라.
+     나쁜 예: "마인드셋(mindset)으로 마음 세팅 완료!" (영어 그대로 넣은 형태)
+   - 좋은 예:
+     - insight → "인싸(insight)는 다 꿰뚫어봐!"
+     - mindset → "마음 셋(mind set)을 제대로 해야 사고방식이 잡힌다."
+     - achieve → "야 치브(achieve)! 목표 달성했다!"
+   - 스토리는 짧을수록 좋지만, 단어 발음과 뜻을 둘 다 연상 가능해야 한다.
+   - 모든 단어는 반드시 story를 채워라. 공백("") 절대 금지.
 `.trim();
 
-    // -------------------------------
-    // 2) user 프롬프트: 그룹/스토리 규칙 + 예시 JSON
-    // -------------------------------
+    // -----------------------------------
+    // 2) user 프롬프트
+    // -----------------------------------
     const prompt = `
-다음 영단어와 뜻 목록을 비슷한 의미/형태/어원끼리 묶어서
-좋은 암기 순서로 재배열하고,
-각 단어마다 "초단기 이미지 암기용" 한 줄 스토리를 만들어줘.
-
-### 1. rootword 규칙
-- 각 단어에 사용된 어원들을 "rootword"에 적어.
-- 여러개의 어원이 있다면 전부 적되 표기는 (in)안에, (door)문 이런 식으로 표기할 것.
-- 같은 어원을 사용한 단어가 있다면 해당 item끼리는 json에서 연속해서 출력해.
-### 2. story 작성 규칙 (매우 중요)
-- 사용자가 해당 단어를 외우가 쉽게 단어별 스토리를 만들어 (초단기 이미지 암기용) 넣어.
-- 스토리는 단어 발음과 뜻이 한 스토리로 잘 어우려져야 한다.
-- 예를들어 단어가 insight라면 인싸(insight)는 다 꿰뚫어봐!를 출력한다.
-- 이는 '인싸'<- 한글로 insight를 표현, '다 꿰둟어봐' <- 통찰력이라는 단어의 뜻을 연상시키는 문장. 이렇게 두 문장이 합쳐진 방식이야.
-- 짧을 수록 좋아.
-- 모든 단어는 무조건 스토리가 있어야해. 공백은 허락하지 않아.
-
-### 3. JSON 형식 예시 (중요)
-아래는 단어 3개만 있는 예시이다. 이 형식과 톤을 그대로 따라라.
-
-{
-  "items": [
-    {
-      "word": "insight",
-      "meaning": "통찰, 통찰력",
-      "rootword": "(in)안에, (sight)보다",
-      "story": "인싸(insight)는 다 꿰뚫어봐"
-    },
-    {
-      "word": "achieve",
-      "meaning": "이루다, 달성하다",
-      "rootword": "(ad)머리",
-      "story": "야 치브(achive)! 목표 클리어!"
-    },
-    {
-      "word": "laundry",
-      "meaning": "세탁물",
-      "rootword": "",
-      "story": "런드리(laundry)룸, 빨래 산더미 폭발"
-    }
-  ]
-}
-
-### 4. 실제로 처리할 단어 목록
-${vocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
+아래 단어 목록을 비슷한 어원/의미끼리 자연스럽게 묶어서 재배열하고,
+각 단어마다 rootword와 한국어 발음 기반 이미지 암기 스토리(story)를 작성해라.
 
 주의:
-- 위 JSON 예시는 설명용일 뿐이di.
-- 실제 출력에서는 위 예시를 절대 포함하지 마.
-- 오직 실제 단어들만 포함한 {"items":[...]} JSON 하나만 출력해.
-- 단어 뜻끼리의 접두사는 , 만 사용할꺼야.
-- v.meaning에서 띄어쓰기나 다른 기호 등으로 구분이 되어있다면 , 로 변환해.
-- 주의할 점은 단어 뜻이 띄어쓰기가 포함되어 있을 수 있으니 뜻과 뜻 사이의 접두사로 쓰인 것인지 혹은 뜻 자체가 띄어쓰기를 포함하는지 잘 판단해서 바꿔.
+- 출력은 반드시 {"items":[...]} 형식의 JSON 하나만.
+- meaning은 아래 목록에 있는 문자열을 그대로 사용해라. (수정 금지)
+
+### 실제 단어 목록 (meaning은 콤마로 구분된 상태임)
+${normalizedVocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
+
+출력 예시 형식:
+{"items":[{"word":"...","meaning":"...","rootword":"...","story":"..."}, ...]}
+(예시는 출력에 포함시키지 마라)
 `.trim();
 
+    // -----------------------------------
+    // 3) OpenAI 호출
+    // -----------------------------------
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -103,16 +119,12 @@ ${vocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',   // 🔥 비용 조금 올리고 품질 확 올린 버전
         messages: [
-          {
-            role: 'system',
-            content: systemMessage
-          },
+          { role: 'system', content: systemMessage },
           { role: 'user', content: prompt }
         ],
-        // 형식 안정성을 위해 낮은 temperature 사용
-        temperature: 0.2
+        temperature: 0.8
       })
     });
 
@@ -123,27 +135,69 @@ ${vocab.map(v => `- ${v.word}: ${v.meaning}`).join('\n')}
       return res.status(500).json({ error: 'OpenAI API error', detail: data });
     }
 
+    // -----------------------------------
+    // 4) 코드블럭 제거 후 JSON 파싱
+    // -----------------------------------
     const raw = (data.choices?.[0]?.message?.content || '').trim();
 
-    // 혹시라도 들어올 수 있는 ```json ... ``` 또는 ``` ... ``` 코드블럭 방어
     let cleaned = raw
-      .replace(/^```json\s*/i, '')
-      .replace(/^```/, '')
+      .replace(/^```json/i, '')
+      .replace(/^```/i, '')
       .replace(/```$/, '')
       .trim();
 
-    let json;
+    let llmJson;
     try {
-      json = JSON.parse(cleaned);
+      llmJson = JSON.parse(cleaned);
     } catch (e) {
-      console.error('JSON parse error:', e, raw);
+      console.error('JSON parse error:', cleaned);
       return res.status(500).json({
         error: 'JSON parse error from LLM',
-        raw
+        raw: cleaned
       });
     }
 
-    return res.status(200).json(json);
+    // -----------------------------------
+    // 5) 후처리: meaning, rootword, story 보정
+    //    - meaning: 항상 우리가 정규화한 값을 사용
+    //    - rootword/story: 비어 있으면 기본값 채우기
+    // -----------------------------------
+    const llmItems = Array.isArray(llmJson.items) ? llmJson.items : [];
+
+    // word → LLM item 매핑
+    const llmMap = new Map();
+    llmItems.forEach((it) => {
+      const w = String(it.word || '').trim().toLowerCase();
+      if (!w) return;
+      if (!llmMap.has(w)) {
+        llmMap.set(w, it);
+      }
+    });
+
+    const finalItems = normalizedVocab.map((v) => {
+      const key = v.word.toLowerCase();
+      const baseMeaning = v.meaning; // 이미 우리가 정규화한 콤마 기반 meaning
+
+      const llmItem = llmMap.get(key) || {};
+      let rootword = String(llmItem.rootword || '').trim();
+      let story = String(llmItem.story || '').trim();
+
+      if (!rootword) {
+        rootword = '어원 정보 없음';
+      }
+      if (!story) {
+        story = `${v.word} : ${baseMeaning} 를(을) 꼭 외우자.`;
+      }
+
+      return {
+        word: v.word,
+        meaning: baseMeaning,
+        rootword,
+        story
+      };
+    });
+
+    return res.status(200).json({ items: finalItems });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
