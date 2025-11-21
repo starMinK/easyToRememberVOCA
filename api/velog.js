@@ -17,7 +17,7 @@ export default async function handler(req, res) {
 
   try {
     // Velog 글 HTML 가져오기
-    const url = `https://velog.io/@dvlp/${encodeURIComponent(slug)}`;
+    const url = `https://velog.io/${encodeURIComponent(slug)}`;
     const html = await fetch(url).then(r => r.text());
 
     // 여기서 정규식이나 간단 파싱으로 본문만 뽑을 수 있음.
